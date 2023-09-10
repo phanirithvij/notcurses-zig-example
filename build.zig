@@ -1,4 +1,5 @@
-const Builder = @import("std").build.Builder;
+const std = @import("std");
+const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
     // Standard target options allows the person running `zig build` to choose
@@ -9,16 +10,18 @@ pub fn build(b: *Builder) void {
 
     // Standard release options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
-    const mode = b.standardReleaseOptions();
-
+    //const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
     const notcurses_source_path = "deps/notcurses";
 
-    const notcurses = b.addStaticLibrary("notcurses", null);
+    const notcurses = b.addStaticLibrary(.{
+	    .name = "notcurses",
+	    .target = target,
+	    .optimize = optimize,
+    });
     // notcurses has saome undefined benavior which makes the demo crash with
     // illegal instruction, disabling UBSAN to make it work (-fno-sanitize-c)
     notcurses.disable_sanitize_c = true;
-    notcurses.setTarget(target);
-    notcurses.setBuildMode(mode);
     notcurses.linkLibC();
 
     notcurses.linkSystemLibrary("deflate");
@@ -27,9 +30,9 @@ pub fn build(b: *Builder) void {
     notcurses.linkSystemLibrary("unistring");
     notcurses.linkSystemLibrary("z");
 
-    notcurses.addIncludePath(notcurses_source_path ++ "/include");
-    notcurses.addIncludePath(notcurses_source_path ++ "/build/include");
-    notcurses.addIncludePath(notcurses_source_path ++ "/src");
+    notcurses.addIncludePath(std.Build.LazyPath { .path = notcurses_source_path ++ "/include"});
+    notcurses.addIncludePath(std.Build.LazyPath { .path = notcurses_source_path ++ "/build/include"});
+    notcurses.addIncludePath(std.Build.LazyPath { .path = notcurses_source_path ++ "/src"});
     notcurses.addCSourceFiles(&[_][]const u8{
         notcurses_source_path ++ "/src/compat/compat.c",
 
@@ -74,21 +77,24 @@ pub fn build(b: *Builder) void {
         "-DPOLLRDHUP=0x2000",
     });
 
-    const exe = b.addExecutable("demo", "src/main.zig");
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-    exe.install();
+    const exe = b.addExecutable(.{
+    .name = "demo",
+    .root_source_file = std.Build.LazyPath { .path = "src/main.zig" },
+    .target = target,
+    .optimize = optimize,
+    });
     exe.linkLibC();
+    b.installArtifact(exe);
 
     // exe.linkSystemLibrary("notcurses-core");
     // exe.addObjectFile(notcurses_source_path ++ "/build/libnotcurses-core.a");
 
-    exe.addIncludePath(notcurses_source_path ++ "/include");
+    exe.addIncludePath(std.Build.LazyPath { .path = notcurses_source_path ++ "/include"} );
     exe.linkLibrary(notcurses);
 
     exe.linkSystemLibrary("qrcodegen");
 
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
